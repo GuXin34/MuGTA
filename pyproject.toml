@@ -5,14 +5,57 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ptc-opd"
 version = "0.2.0"
-description = "Perceptual trajectory- and codebook-aware on-policy distillation"
+description = "Perceptual-Trajectory + Codebook-aware On-Policy Distillation for MusicGen (MuGTA, ICASSP 2027)"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "MuGTA Authors" }]
 requires-python = ">=3.9,<3.12"
-dependencies = ["torch==2.1.0"]
+keywords = ["music-generation", "on-policy-distillation", "musicgen", "audio", "icassp"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch==2.1.0",
+    "torchaudio==2.1.0",
+    "numpy>=1.23.5,<2",
+    "scipy>=1.10,<2",
+    "soundfile>=0.12,<0.14",
+    "librosa>=0.10,<0.11",
+    "resampy>=0.4,<0.5",
+    "transformers>=4.36,<5",
+    "sentencepiece>=0.1.99",
+    "huggingface_hub>=0.20,<1",
+    "einops>=0.7,<1",
+    "omegaconf>=2.3,<3",
+    "encodec>=0.1.1",
+    "scikit-learn>=1.3,<2",
+    "pandas>=2.0,<3",
+    "pyyaml>=6.0,<7",
+    "jsonschema>=4.19,<5",
+    "tqdm>=4.66,<5",
+    "psutil>=5.9,<6",
+]
 
 [project.optional-dependencies]
-test = ["pytest>=7.4,<9"]
+test = ["pytest>=7.4,<9", "pytest-xdist>=3.5,<4"]
+dev  = ["pytest>=7.4,<9", "pytest-xdist>=3.5,<4"]
 calibration = ["numpy>=1.23.5,<2", "soundfile>=0.12,<0.14"]
-cfg-gate = ["numpy>=1.23.5,<2", "soundfile>=0.12,<0.14"]
+cfg-gate    = ["numpy>=1.23.5,<2", "soundfile>=0.12,<0.14"]
+eval = [
+    "laion-clap==1.1.4",
+    "frechet_audio_distance>=0.1,<0.2",
+    "statsmodels>=0.14,<1",
+]
+
+[project.urls]
+Homepage   = "https://github.com/GuXin34/MuGTA"
+Repository = "https://github.com/GuXin34/MuGTA"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

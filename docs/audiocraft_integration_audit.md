@@ -2,7 +2,7 @@
 
 ## 0. 审计范围与结论
 
-- 只读源项目：`/Users/suorangu/Desktop/audio_music/ICASSP2027_OPD_Music`
+- 只读源项目：`<local>/ICASSP2027_OPD_Music`
 - 重点子仓库：`third_party/audiocraft`
 - 子仓库状态：clean
 - 子仓库版本：`896ec7c47f5e5d1e5aa1e4b260c4405328bf009d`
