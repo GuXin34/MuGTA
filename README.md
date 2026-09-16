@@ -1,13 +1,13 @@
-# MuGTA: Perceptual-Trajectory + Codebook-aware On-Policy Distillation for MusicGen
+# MUGTA: On-Policy Guidance Transfer and Supervision Allocation for Music Generation
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%E2%80%933.11-blue.svg)](https://www.python.org)
 [![PyTorch 2.1](https://img.shields.io/badge/PyTorch-2.1.0-ee4c2c.svg)](https://pytorch.org)
-[![ICASSP 2027](https://img.shields.io/badge/ICASSP-2027%20Submission-critical.svg)](#citation)
 
-> Reference implementation of the paper **"MuGTA: Perceptual-Trajectory + Codebook-aware On-Policy Distillation for MusicGen"** (ICASSP 2027 submission, under single-blind review).
+
+> Reference implementation of the paper **"MUGTA: On-Policy Guidance Transfer and Supervision Allocation for Music Generation"**.
 >
-> The paper studies **on-policy distillation (OPD)** for text-to-music language models. We show that the *frozen-CFG-teacher* baseline already recovers most of the perceptual gain of CFG-guided sampling **while roughly halving decoder latency**, and we investigate two orthogonal supervision-selection schemes — **codebook-aware weighting** (`a_q` derived from a codec prior) and **perceptual-trajectory (PTC) top-K JS masking** — under a strict factorial protocol on MusicGen-small and MusicGen-medium.
+> The paper studies **on-policy distillation (OPD)** for text-to-music language models. We show that the *frozen-CFG-teacher* baseline already recovers most of the perceptual gain of CFG-guided sampling **while roughly halving decoder latency**, and we investigate two orthogonal supervision-selection schemes — **codebook-aware weighting** (`aq` derived from a codec prior) and **perceptual-trajectory (PTC) top-K JS masking** — under a strict factorial protocol on MusicGen-small and MusicGen-medium.
 
 ---
 
@@ -18,11 +18,11 @@
 4. [Installation](#installation)
 5. [Quickstart](#quickstart)
 6. [Reproducing the Paper](#reproducing-the-paper)
-7. [Model Zoo](#model-zoo)
-8. [Evaluation Protocol](#evaluation-protocol)
-9. [Known Limitations](#known-limitations)
-10. [Citation](#citation)
-11. [License](#license)
+7. [Evaluation Protocol](#evaluation-protocol)
+8. [Known Limitations](#known-limitations)
+9. [Citation](#citation)
+10. [License](#license)
+11. [Acknowledgements](#acknowledgements)
 
 ---
 
@@ -175,15 +175,6 @@ python scripts/build_stage1_pilot_summary.py \
 
 For the full MusicGen-medium cross-scale protocol, see [`docs/STAGE1_AUTONOMY_RUNBOOK.md`](docs/STAGE1_AUTONOMY_RUNBOOK.md).
 
-## Model Zoo
-
-Pretrained student checkpoints will be released on HuggingFace after peer review closes.
-
-| Model | Backbone | Method | Q_dev (paired) | Latency (bs=1, 10 s) | Link |
-|---|---|---|---:|---:|---|
-| MuGTA-small-frozen | MusicGen-small | frozen-CFG-teacher | `+0.233 [+0.126, +0.348]` | 15.6 s | *TBD* |
-| MuGTA-medium-frozen | MusicGen-medium | frozen-CFG-teacher | *(see paper Tab. 3)* | 15.9 s | *TBD* |
-
 ## Evaluation Protocol
 
 - **Prompts:** 128 prompt clusters from MusicCaps dev-split (bootstrap unit)
@@ -207,7 +198,7 @@ If you use MuGTA in your research, please cite:
 
 ```bibtex
 @inproceedings{mugta2027,
-  title     = {MuGTA: Perceptual-Trajectory + Codebook-aware On-Policy Distillation for MusicGen},
+  title     = {MUGTA: On-Policy Guidance Transfer and Supervision Allocation for Music Generation},
   author    = {Anonymous},
   booktitle = {ICASSP},
   year      = {2027},
@@ -222,3 +213,79 @@ Machine-readable metadata is also available in [`CITATION.cff`](CITATION.cff).
 MuGTA is released under the **Apache License 2.0** — see [`LICENSE`](LICENSE).
 
 The AudioCraft overlay patch in `patches/audiocraft/` is derivative of Meta's AudioCraft (MIT License, © Meta Platforms) and inherits the MIT terms as noted in the patch header. All other code is original to this repository.
+
+## Acknowledgements
+
+MuGTA stands on the shoulders of the following open-source projects, model
+releases, datasets and evaluation toolkits. Without their generous release
+under permissive or research-friendly licenses this work would not have
+been possible.
+
+### Backbone model & generation stack
+- **MusicGen** (Copet *et al.*, 2023) — the text-to-music decoder-only
+  language model that we distill in this paper. We use the pre-trained
+  `facebook/musicgen-small` and `facebook/musicgen-medium` checkpoints as
+  our frozen teacher and student initialization.
+  <https://github.com/facebookresearch/audiocraft>
+- **AudioCraft** — Meta's audio-generation toolbox that hosts MusicGen,
+  MusicGen sampling, and the delayed-pattern codebook logic. Our
+  `patches/audiocraft/0001-explicit-no-cfg-generation.patch` is a small
+  overlay against AudioCraft `1.4.0a2` (commit
+  `896ec7c47f5e5d1e5aa1e4b260c4405328bf009d`) that adds an explicit
+  `use_cfg=False` shortcut while preserving byte-identical behaviour to
+  upstream in the CFG-on path.
+  Licensed under MIT © Meta Platforms.
+- **EnCodec** (Défossez *et al.*, 2022) — the residual-vector-quantised
+  neural audio codec used as MusicGen's tokenizer and decoder. Our A1-R2
+  codebook prior `a_q` is derived directly from EnCodec's frozen codebook
+  activations.
+  <https://github.com/facebookresearch/encodec>
+- **T5** (Raffel *et al.*, 2020) — the frozen `t5-base` text encoder used
+  by MusicGen for conditioning; we do not modify it.
+
+### Perceptual and semantic evaluators
+- **MuQ** (Tencent AI Lab) — self-supervised music representation model
+  used as the primary paired-comparison quality evaluator.
+  <https://github.com/tencent-ailab/MuQ>
+- **MERT** (Li *et al.*, 2023) — music-understanding foundation model
+  used for representation-space diversity metrics.
+  <https://huggingface.co/m-a-p/MERT-v1-95M>
+- **CLAP / LAION-CLAP** (Wu *et al.*, 2023) — contrastive
+  language–audio pretrained model used both as a semantic-alignment
+  evaluator and as a Fréchet-distance embedding backbone.
+  <https://github.com/LAION-AI/CLAP>
+- **AudioBox Aesthetics** (Meta AI) — the perceptual aesthetics
+  evaluator supplying the CE (Content-Enjoyment) and PQ (Perceptual
+  Quality) subscales used in our composite `Q_dev` score.
+  <https://ai.meta.com/research/publications/audiobox-aesthetics/>
+
+### Fréchet Audio Distance (FAD)
+- **Fréchet Audio Distance** (Kilgour *et al.*, 2019) — the original
+  reference FAD protocol using VGGish embeddings.
+- **`frechet_audio_distance`** (Microsoft / community fork) — the
+  Python package that provides multi-backbone FAD (VGGish, PANN, CLAP,
+  MERT) and that we use for diversity/similarity reporting.
+  <https://github.com/microsoft/fadtk>
+- **VGGish** (Hershey *et al.*, 2017) — the audio-event embedding
+  network used as the classical FAD reference space.
+
+### Datasets
+- **MusicCaps** (Agostinelli *et al.*, 2023) — the 5.5 K human-caption
+  music dataset from which our 128-prompt dev-split and 200-prompt
+  test-split are drawn.
+  <https://www.kaggle.com/datasets/googleai/musiccaps>
+- **FMA (Free Music Archive)** (Defferrard *et al.*, 2017) — used for
+  FAD reference statistics under the A1-R2 SHA-pinned protocol.
+  <https://github.com/mdeff/fma>
+
+### Infrastructure
+- **PyTorch** and **`torchaudio`** — the training runtime.
+- **HuggingFace `transformers`, `huggingface_hub`, `datasets`** — for
+  hosting the evaluators and future model-zoo release.
+- **`soundfile`, `librosa`, `resampy`, `scipy`, `numpy`, `pandas`** —
+  audio I/O, resampling, and statistical toolchain.
+
+We are grateful to the maintainers of every project above for keeping
+their code, models and datasets openly available to the research
+community. Any errors in citation, attribution or interpretation are
+solely the responsibility of the MuGTA authors.
