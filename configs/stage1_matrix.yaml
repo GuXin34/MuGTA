@@ -1,0 +1,786 @@
+schema_version: "1.0"
+project: ptc_opd_music
+stage: stage1_phenomenon_to_primary
+frozen_on: "2026-08-12"
+corrective_protocol_frozen_on: "2026-08-14"
+
+scope:
+  writable_workpack: ICASSP2027_PTC_OPD_Stage1Autonomy_20260819
+  retained_read_only_workpack: ICASSP2027_PTC_OPD_A1R2_Workpack_20260814
+  legacy_project_is_read_only: true
+  environment_acceptance:
+    status: accepted_prerequisite
+    reopen_in_stage1: false
+  fad_acceptance:
+    status: accepted_prerequisite
+    reopen_in_stage1: false
+
+execution:
+  scheduler: none
+  slurm_allowed: false
+  machines: [node-0, node-1, node-2, node-3]
+  machine_labels_are_distributed_ranks: false
+  gpus_per_machine: 8
+  max_jobs_per_machine: 1
+  max_concurrent_jobs: 4
+  nnodes_per_job: 1
+  world_size_per_job: 8
+  cross_machine_ddp: false
+  world_size_32_forbidden: true
+  allowed_launchers:
+    - torchrun_standalone
+  torchrun_contract:
+    nnodes: 1
+    nproc_per_node: 8
+    standalone: true
+  dora_forbidden: true
+  submitit_forbidden: true
+  allocation_unit: condition_seed
+
+models:
+  development:
+    model_id: facebook/musicgen-small
+    revision: PIN_BEFORE_FIRST_RUN
+  primary:
+    model_id: facebook/musicgen-medium
+    revision: PIN_BEFORE_FIRST_RUN
+  codec:
+    revision: RECORD_FROM_RESOLVED_MUSICGEN_CHECKPOINT
+    require_same_revision_small_medium_to_reuse_prior: true
+  teacher:
+    source: same_initial_checkpoint_as_student
+    frozen: true
+    cfg_scale_candidates: [2.0, 3.0, 5.0]
+    cfg_scale_selected_on: dev.full.jsonl
+    cfg_scale_selection_scope: exact_model_checkpoint
+    cross_model_scale_transfer_forbidden: true
+    cfg_scale_decisions:
+      development:
+        model: facebook/musicgen-small
+        directory: artifacts/cfg_scale/small/decision
+        retained_decision_file_sha256: 731d0a00ac519079b40889e4fd79ec5ee450b1da8507e32ec815b042f0bb96d8
+        retained_sidecar_file_sha256: e60320bf2a052fd72b2caec9edbd788e4e39999122fc8f02f0ce766843d29899
+      primary:
+        model: facebook/musicgen-medium
+        directory: artifacts/cfg_scale/medium/decision
+        retained_decision_file_sha256: 6f9b5d4e35982dab21910cf45825a8c3b26fa0374416b8a80df3d56dfbdd89ac
+        retained_sidecar_file_sha256: bc274b36938e5833dddc494452bc9969214bf31a5893f74e8862c509b604bd84
+    manual_unbound_cfg_scale_forbidden: true
+    cfg_one_use: correctness_only
+  trainable_components:
+    musicgen_lm: true
+    encodec: false
+    text_conditioner: false
+
+data:
+  split_seed: 2701
+  deduplicate:
+    exact_caption: true
+    near_duplicate_caption: true
+    shared_source_id: true
+  manifests:
+    train:
+      path: manifests/musiccaps-v1/train.full.jsonl
+      size: all_eligible_after_dev_holdout
+      required_sha256: RECORD_BEFORE_RUN
+      used_by_every_training_condition: true
+    dev:
+      path: manifests/musiccaps-v1/dev.full.jsonl
+      size: 300
+      required_sha256: RECORD_BEFORE_RUN
+    phenomenon_probe:
+      path: manifests/musiccaps-v1/phenomenon_probe.dev.jsonl
+      size: 256
+      subset_of: dev
+      training_input: false
+      required_sha256: RECORD_BEFORE_RUN
+    codec_calibration:
+      path: manifests/a1-r2/codec_calibration.train.jsonl
+      report_path: manifests/a1-r2/codec_calibration.train.report.json
+      schema: ptc-opd-fma-calibration-v2
+      protocol: A1-R2
+      size: 512
+      duration_seconds: 10
+      source: fma_small
+      overlap_with_dev_or_test: forbidden
+      required_sha256: RECORD_BEFORE_RUN
+      report_required_sha256: RECORD_BEFORE_RUN
+      original_candidates_audited: 7994
+      input_eligibility:
+        stage: pre_codec_pre_marginal
+        pcm_finite: required
+        mono_rms_gte: 1.0e-5
+        mono_compatibility_ratio_gte: 1.0e-3
+        pre_downmix_rms_denominator: 1.0e-12
+        lr_correlation: diagnostic_only
+        track_id_blacklist: forbidden
+    test:
+      path: manifests/musiccaps-v1/test.full.jsonl
+      size: 500
+      stage1_access_before_method_freeze: forbidden
+      required_sha256: RECORD_BEFORE_FINAL_EVALUATION
+  training_input_contract:
+    required_manifest_basename: train.full.jsonl
+    same_sha_across_all_jobs: true
+    local_copy_allowed_only_if_hash_matches: true
+    distributed_sampler_scope: eight_ranks_inside_one_job
+  shard_of_4:
+    allowed_uses:
+      - preprocessing
+      - frozen_checkpoint_generation
+      - offline_evaluation
+    forbidden_uses:
+      - training
+      - assigning_conditions_to_data_quarters
+    completion_check: reunited_id_multiset_equals_unsharded_source
+  codec_calibration_source:
+    repository: mdeff/fma
+    archive: fma_small.zip
+    advertised_track_count: 8000
+    advertised_duration_seconds_per_track: 30
+    required_archive_sha1: ade154f733639d52e35e32f5593efe5be76c6d70
+    archive_hash_mismatch_action: stop
+    candidate_processing_order:
+      - decode_and_validate_all_7994_candidates
+      - derive_each_deterministic_10s_segment
+      - exact_audiocraft_32khz_mono_conversion_and_eligibility
+      - rank_only_eligible_candidates_and_select_lowest_512_hashes
+    eligibility:
+      decodes_successfully: true
+      minimum_decoded_seconds: 10
+      rejected_track_ids_and_reasons_recorded: true
+    deterministic_track_selection:
+      count: 512
+      eligible_candidates_only: true
+      after_all_candidate_segments_are_audited: true
+      rank_key: 'SHA256("ptc-opd-codec-cal-v1|2701|" + track_id)'
+      choose: lowest_hashes
+    deterministic_segment:
+      length_seconds: 10
+      offset_key: 'SHA256("ptc-opd-codec-segment-v1|2701|" + track_id)'
+      offset_rule: uint64_hash_modulo_valid_decoded_start_frames
+    required_per_item_fields:
+      - fma_track_id
+      - relative_audio_path
+      - source_audio_sha256
+      - decoded_duration_frames
+      - segment_start_frame
+      - segment_num_frames
+      - extracted_pcm_sha256
+      - pre_downmix_rms
+      - mono_rms
+      - mono_compatibility_ratio
+      - eligibility_codec_input_pcm_sha256
+    forbidden_prior_sources:
+      - musiccaps_test_audio
+      - audioset_eval_audio
+      - development_audio
+      - generated_test_audio
+
+seeds:
+  train: [2027, 2028, 2029]
+  small_pilot_train: 2027
+  rollout_probe: [31001, 31002]
+  final_generation: [31001, 31002, 31003, 31004]
+  perceptual_bootstrap: 4701
+  disagreement_bootstrap: 4702
+  cfg_anchor_base: 29001
+  cfg_anchor_namespace: ptc-opd-cfg-anchor-v1
+  cfg_scale_bootstrap: 4703
+  random_mask_namespace: 5701
+
+method:
+  policy: online_student_rollout
+  student_inference_cfg: false
+  teacher_prefix: identical_student_sampled_prefix
+  kl_direction: forward
+  distillation_temperature: 1.0
+  loss_coefficient: 1.0
+  loss_coefficient_tunable: false
+  divergence_dtype: float32
+  selector:
+    primary_score: detached_js
+    primary_scope: per_sample_per_codebook_over_valid_time
+    retention: 0.5
+    count_rule: ceil_rho_times_valid_count
+    ties: stable_time_index_after_score
+    perceptual_prior_in_primary_ranking: false
+  codebook_prior:
+    source: progressive_mrstft_marginal
+    role: kl_weight_only
+    epsilon: 1.0e-8
+    normalization: sum_to_one
+  loss_normalization: sum_selected_effective_weight
+  valid_positions_only: true
+  invalid_and_padding_weight: 0.0
+  equations:
+    ranking_score: "r_btq = JS(stopgrad(p_T_btq), stopgrad(p_S_btq))"
+    gate: "g_btq = TopRho_t(r_btq) independently for each (b,q)"
+    ptc_loss: "sum(g_btq*a_q*KL_T_to_S)/sum(g_btq*a_q)"
+  diagnostic_not_primary:
+    id: global_joint_selector
+    score: "a_q * detached_JS"
+    scope: global_valid_positions_per_sample
+    seeds: [2027]
+    may_redefine_primary_method: false
+
+rollout:
+  duration_seconds: 10
+  sample_without_cfg: true
+  temperature: 1.0
+  top_k: 250
+  top_p: 0.0
+  count_every_scheduled_rollout: true
+
+phenomenon_experiments:
+  progressive_codebook_marginal:
+    id: phenom.codec_marginal.small
+    model: development
+    input_manifest: codec_calibration
+    code_domain: canonical_encodec_before_delay_pattern
+    detect_q_at_runtime: true
+    preserve_original_codebook_order: true
+    cumulative_prefixes: true
+    encode_once_per_clip: true
+    q0_reference: waveform_zeros_like_aligned_input
+    zero_latent_decode_as_q0_forbidden: true
+    q_ge_1_reconstruction: decode_first_q_codebooks_from_same_canonical_codes
+    reconstruction_length: crop_to_original_aligned_waveform_length
+    audio_post_loudness_normalization: false
+    metric:
+      id: mrstft
+      fft_sizes: [512, 1024, 2048]
+      hop_divisor: 4
+      window_equals_fft: true
+      epsilon: 1.0e-7
+      reference_norm_must_be_strictly_gt_epsilon: true
+      denominator_clamp: forbidden
+      terms: [spectral_convergence, log_magnitude_l1]
+      aggregation: mean_over_resolutions
+    marginal: "Delta_iq = d(x_i,xhat_i_qminus1)-d(x_i,xhat_i_q)"
+    prior: "a_q=max(mean_i(Delta_iq),1e-8)/sum_j(max(mean_i(Delta_ij),1e-8))"
+    bootstrap:
+      outer_unit: clip
+      replicates: 10000
+      seed: 4701
+    split_half:
+      domain: ptc-opd-codec-split-v1
+      seed: 4701
+      assignment: sort_by_domain_separated_sha256_then_alternate_even_odd_ranks
+      statistic: kendall_rank_correlation
+    outputs:
+      - artifacts/phase_a1_codec_prior_r2/codec_prior.per_clip.jsonl.gz
+      - artifacts/phase_a1_codec_prior_r2/codec_prior.summary.csv
+      - artifacts/phase_a1_codec_prior_r2/codec_prior.json
+      - artifacts/phase_a1_codec_prior_r2/ARTIFACT_SEAL.json
+    pass_gate:
+      tv_from_uniform_ci95_lower_gt: 0.05
+      split_half_kendall_gte: 0.6666666666666666
+      split_half_kendall_exact_threshold: 2/3
+      max_leave_one_out_prior_tv_lte: 0.05
+      median_rank_kendall_vs_primary_gte: 0.6666666666666666
+      trimmed_mean_1pct_rank_kendall_vs_primary_gte: 0.6666666666666666
+      trimmed_mean_each_tail_count_at_n512: 5
+      denominator_floor_activation_eq: 0
+      raw_negative_marginals_must_be_reported: true
+    on_fail: stop_before_a2_and_remove_codebook_prior_from_headline
+
+  teacher_student_disagreement:
+    id: phenom.disagreement.small.init
+    model: development
+    input_manifest: phenomenon_probe
+    prompts: 256
+    rollouts_per_prompt: 2
+    rollout_seeds: [31001, 31002]
+    checkpoint: initialization
+    teacher_cfg_scale: USE_FROZEN_SELECTED_SCALE
+    trajectory_source: no_cfg_student
+    teacher_and_student_prefix_match: true
+    valid_cell_fields:
+      - prompt_id
+      - rollout_seed
+      - codebook_id
+      - codec_frame_index
+      - temporal_decile
+      - js
+      - forward_kl
+      - teacher_entropy
+      - student_entropy
+      - sampled_token_logp_teacher
+      - sampled_token_logp_student
+      - perceptual_prior
+      - selected_within_bq_js_top50
+    topk_logit_audit:
+      prompts: 16
+      k: 32
+      full_logits_persisted: false
+    aggregate_codebook_by: mean_per_valid_cell
+    bootstrap:
+      outer_unit: prompt
+      nested_unit: rollout_seed
+      replicates: 10000
+      seed: 4702
+    c50_definition: "sum_t(g_btq*JS_btq)/sum_t(JS_btq), gate formed independently in each (b,q)"
+    outputs:
+      - artifacts/phase_a2_a3/probe/disagreement_cells.jsonl.gz
+      - artifacts/phase_a2_a3/probe/disagreement_top32_audit.jsonl.gz
+      - artifacts/phase_a2_a3/probe/disagreement_probe_metadata.json
+      - artifacts/phase_a2_a3/probe/artifact_seal.json
+      - artifacts/phase_a2_a3/summary/disagreement_summary.csv
+      - artifacts/phase_a2_a3/summary/disagreement_summary.json
+      - artifacts/phase_a2_a3/summary/disagreement_bootstrap.npz
+      - artifacts/phase_a2_a3/summary/artifact_seal.json
+    pass_gate:
+      prompt_aggregate_c50_ci95_lower_gt: 0.60
+    on_fail: stop_top50_targeting_claim
+
+  uniform_loss_mass:
+    id: phenom.uniform_mass.small.init
+    reuses_cells_from: phenom.disagreement.small.init
+    quantities:
+      uniform_nominal_share: "U(group)=N_valid(group)/N_valid(all)"
+      perceptual_weight_share: "W_a(q)=a_q*N_q/sum_j(a_j*N_j)"
+      observed_kl_share: "K(group)=sum(KL_group)/sum(KL_all)"
+      selected_js_capture: "C50_JS_bq=sum(g*JS)/sum(JS)"
+      selected_kl_capture: "C50_KL_bq=sum(g*KL)/sum(KL)"
+    required_slices:
+      - codebook
+      - temporal_decile
+      - js_quantile_within_sample_codebook
+      - codebook_x_temporal_decile
+      - prompt
+    outputs:
+      - artifacts/phase_a2_a3/summary/disagreement_summary.csv
+      - artifacts/phase_a2_a3/summary/disagreement_summary.json
+      - artifacts/phase_a2_a3/summary/disagreement_bootstrap.npz
+      - artifacts/phase_a2_a3/summary/artifact_seal.json
+    pass_gate:
+      tv_uniform_vs_perceptual_weight_ci95_lower_gt: 0.05
+      selected_js_top50_kl_capture_ci95_lower_gt: 0.60
+    claim_boundary:
+      equal_nominal_coefficients: allowed_if_measured
+      compute_saving: forbidden_without_walltime_or_memory_gain
+
+correctness_gate:
+  model: development
+  mandatory: true
+  tests:
+    - id: cfg1_identical_weights_zero_kl
+      mean_kl_lt: 1.0e-6
+      max_valid_cell_kl_lt: 1.0e-5
+      dtype: float32
+    - id: all_selected_uniform_equivalence
+      codebook_weights: all_equal
+      relative_loss_error_lt: 1.0e-6
+      relative_gradient_error_lt: 1.0e-5
+    - id: ptc_equals_disagreement_when_weights_equal
+      gate_exact: true
+      relative_loss_error_lt: 1.0e-6
+      relative_gradient_error_lt: 1.0e-5
+    - id: random_and_js_gate_counts_match_each_bq
+      exact: true
+    - id: invalid_logits_may_be_nan_without_contamination
+      exact: true
+    - id: invalid_delay_positions_zero_weight_gradient
+      exact: true
+    - id: pattern_roundtrip_preserves_frame_codebook_identity
+      exact: true
+    - id: frozen_teacher_hash_unchanged_after_two_updates
+      exact: true
+    - id: deterministic_first_batch_and_gate_after_resume
+      exact: true
+    - id: ddp_global_reduction_matches_concatenated_reference
+      world_size: 8
+      relative_loss_error_lt: 1.0e-6
+      relative_gradient_error_lt: 1.0e-5
+    - id: ptc_stability_500_updates
+      nan_or_inf_allowed: false
+      zero_selected_batch_allowed: false
+      peak_memory_margin_min: 0.05
+  failure_action: stop_and_invalidate_downstream_artifacts_from_bad_revision
+
+development_freeze:
+  cfg_scale:
+    applies_to_model: development
+    status: retained_gate1_selected_5_verify_before_consumption
+    rerun_policy: explicit_adjudication_only_after_verification_or_identity_binding_failure
+    candidates: [2.0, 3.0, 5.0]
+    evaluation_manifest: dev.full.jsonl
+    prompts: 300
+    anchors: [no_cfg, cfg_2.0, cfg_3.0, cfg_5.0]
+    duration_seconds: 10
+    matched_seed_per_prompt: true
+    raw_float_wav_without_loudness_normalization: true
+    metrics:
+      muq: muq_mi
+      aesthetic: "0.5*Delta_z_Audiobox_CE + 0.5*Delta_z_Audiobox_PQ"
+      relevance_guardrail: music_clap
+    q_dev: "0.5*Delta_z_MuQ_MI + 0.5*Delta_z_Aesthetic"
+    q_dev_expanded: "0.5*Delta_z_MuQ_MI + 0.25*Delta_z_Audiobox_CE + 0.25*Delta_z_Audiobox_PQ"
+    base_standardization: no_cfg_sample_sd
+    paired_prompt_bootstrap: {replicates: 10000, seed: 4703}
+    rule:
+      q_dev_positive: true
+      paired_bootstrap_probability_positive_gte: 0.90
+      clap_guardrail_base_sd_gte: -0.10
+    selection: highest_eligible_q_dev
+    tie_break: lower_cfg_scale_only_on_exact_numerical_q_dev_equality
+    immutable_decision_required: true
+  primary_model_cfg_scale:
+    timing: retained_gate1_decision_verified_before_any_medium_run
+    applies_to_model: primary
+    status: retained_gate1_selected_5_verify_before_consumption
+    rerun_policy: explicit_adjudication_only_after_verification_or_identity_binding_failure
+    exact_same_rule_as_development_cfg_scale: true
+    exact_checkpoint_source_and_t5_binding: true
+    reuse_development_numeric_scale_without_gate: forbidden
+    immutable_decision_required: true
+  learning_rate:
+    candidates: [1.0e-6, 3.0e-6, 1.0e-5]
+    sweep_method: uniform100
+    model: development
+    train_seed: 2027
+    optimizer_steps: 500
+    decision_checkpoint: 500
+    selection: highest_q_dev_subject_to_clap_and_stability_guardrails
+    tie_break: lower_learning_rate
+  freeze_before_small_component_pilot: true
+  test_manifest_access: forbidden
+
+training_common:
+  objective_components: [opd]
+  effective_global_batch: 64
+  physical_batch_per_gpu_initial: 2
+  bf16: true
+  gradient_accumulation: derive_to_effective_global_batch
+  optimizer:
+    name: adamw
+    betas: [0.9, 0.95]
+    epsilon: 1.0e-8
+    weight_decay: 0.0
+    reason_for_zero_weight_decay: keep_update_objective_pure_opd
+  learning_rate_schedule:
+    type: linear_warmup_then_constant
+    warmup_optimizer_updates: 50
+    warmup_initial_ratio: 0.0
+    horizon_independent: true
+  gradient_clip_global_norm: 1.0
+  same_prompt_count_across_methods: true
+  same_prompt_order_within_train_seed_across_methods: true
+  same_valid_rollout_token_budget_across_methods: true
+  same_optimizer_updates_across_methods: true
+  checkpoint_selection:
+    pilot: fixed_final_step
+    primary: fixed_final_step
+
+methods:
+  uniform100:
+    retention: 1.0
+    selector: all_valid
+    kl_weight: uniform
+  codebook100:
+    retention: 1.0
+    selector: all_valid
+    kl_weight: perceptual_prior
+  random50:
+    retention: 0.5
+    selector: random_valid_time_within_each_sample_codebook
+    selected_count: same_k_bq_as_js_top50
+    deterministic_key_fields: [run_seed, optimizer_step, stable_sample_id, codebook_id]
+    unrecorded_global_rng_allowed: false
+    kl_weight: uniform
+  prefix50:
+    retention: 0.5
+    selector: earliest_valid_time_within_each_sample_codebook
+    selected_count: same_k_bq_as_random_and_js_top50
+    role: small_only_temporal_skew_diagnostic
+    primary_or_medium_method: false
+    kl_weight: uniform
+  disagreement50:
+    retention: 0.5
+    selector: detached_js_topk_time_within_each_sample_codebook
+    selected_count: same_k_bq_as_random50
+    kl_weight: uniform
+  ptc50:
+    retention: 0.5
+    selector: detached_js_topk_time_within_each_sample_codebook
+    gate_must_equal: disagreement50
+    kl_weight: perceptual_prior
+
+small_pilot:
+  model: development
+  train_seed: 2027
+  methods:
+    - uniform100
+    - codebook100
+    - random50
+    - prefix50
+    - disagreement50
+    - ptc50
+  optimizer_steps: 1000
+  checkpoint_steps: [0, 250, 500, 1000]
+  decision_checkpoint: 1000
+  evaluation:
+    manifest: dev
+    prompts: 128
+    matched_generation_seeds: [31001, 31002]
+    metrics:
+      - muq_quality
+      - audiobox_aesthetics
+      - music_clap_relevance
+      - mert_prompt_pairwise_diversity
+      - fad_pipeline_check
+  q_dev: "0.5*Delta_z_MuQ_vs_base + 0.5*Delta_z_Aesthetic_vs_base"
+  gates:
+    uniform_q_dev_gt: 0.0
+    ptc_gain_retention_vs_uniform_gte: 0.80
+    ptc_quality_deficit_vs_random_base_sd_gte: -0.10
+    ptc_mert_diversity_point_estimate_gt_uniform: true
+    disagreement_q_dev_gt_prefix_point_estimate: true
+    finite_metrics: true
+    stable_optimization: true
+  inference_anchors:
+    - base_no_cfg
+    - frozen_cfg_teacher
+  interpretation: engineering_go_no_go_not_paper_significance
+  diagnostic_note: >-
+    prefix50 was frozen before pilot results because A2 showed strong early-time
+    disagreement skew. It tests whether disagreement targeting adds value beyond
+    selecting the earliest matched half. It is not carried into the medium main
+    matrix.
+
+medium_scale_gate:
+  prerequisites:
+    correctness_all_pass: true
+    perceptual_nonuniformity_pass: true
+    disagreement_targetability_pass: true
+    uniform_allocation_mismatch_pass: true
+    small_pilot_pass: true
+  model: primary
+  methods: [uniform100, ptc50]
+  train_seed: 2027
+  optimizer_steps: 250
+  timing:
+    warmup_updates: 50
+    measured_updates: 200
+    statistic: p90_complete_step_seconds
+    includes: [rollout, teacher_query, loss, backward, communication]
+    ptc_to_uniform_ratio_lte: 1.25
+  gates:
+    world_size_exact: 8
+    nnodes_exact: 1
+    same_train_manifest_hash: true
+    same_frozen_teacher_hash: true
+    nan_or_inf_allowed: false
+    zero_selected_batch_allowed: false
+    peak_memory_margin_min: 0.05
+    medium_uniform_equivalence_repeated: true
+    initial_medium_c50_point_estimate_gt: 0.60
+    checkpoint_250_decodes_smoke_prompts: true
+  one_engineering_adjustment_allowed:
+    choices:
+      - physical_batch_and_gradient_accumulation
+      - activation_checkpointing
+      - logging_frequency
+    apply_to_all_medium_conditions: true
+    invariants:
+      - effective_global_batch
+      - loss_definition
+      - prompt_budget
+      - retention
+
+primary_experiment:
+  model: primary
+  methods:
+    - uniform100
+    - codebook100
+    - random50
+    - disagreement50
+    - ptc50
+  train_seeds: [2027, 2028, 2029]
+  total_jobs: 15
+  optimizer_steps: 3000
+  checkpoint_steps: [0, 250, 500, 1000, 2000, 3000]
+  decision_checkpoint: 3000
+  primary_comparisons:
+    - [ptc50, uniform100]
+    - [ptc50, random50]
+  component_comparisons:
+    - [codebook100, uniform100]
+    - [disagreement50, random50]
+    - [ptc50, disagreement50]
+  inference_anchors:
+    - base_no_cfg
+    - frozen_cfg_teacher
+  no_diagnostic_may_replace_missing_primary_seed: true
+
+manual_schedule:
+  advance_rule: all_successful_jobs_in_wave_are_sealed
+  failed_job_rule: resume_same_run_id_seed_and_manifest
+  waves:
+    - wave: 1
+      node-0: {method: uniform100, seed: 2027}
+      node-1: {method: codebook100, seed: 2027}
+      node-2: {method: random50, seed: 2027}
+      node-3: {method: disagreement50, seed: 2027}
+    - wave: 2
+      node-0: {method: ptc50, seed: 2027}
+      node-1: {method: uniform100, seed: 2028}
+      node-2: {method: codebook100, seed: 2028}
+      node-3: {method: random50, seed: 2028}
+    - wave: 3
+      node-0: {method: disagreement50, seed: 2028}
+      node-1: {method: ptc50, seed: 2028}
+      node-2: {method: uniform100, seed: 2029}
+      node-3: {method: codebook100, seed: 2029}
+    - wave: 4
+      node-0: {method: random50, seed: 2029}
+      node-1: {method: disagreement50, seed: 2029}
+      node-2: {role: spare_or_offline_evaluation}
+      node-3: {method: ptc50, seed: 2029}
+
+falsification:
+  teacher_failure:
+    audit_attempts_allowed: 1
+    then: stop_opd_study
+  perceptual_prior_failure:
+    then: remove_prior_and_codebook_inequality_claim
+  disagreement_concentration_failure:
+    then: stop_top50_targeting_claim
+  ptc_vs_random_indistinguishable_after_valid_pilot:
+    then: pivot_to_codec_geometry_opd
+    ordinary_reweighting_novelty_claim_allowed: false
+  rerun_allowed_only_for:
+    - documented_implementation_failure
+    - documented_infrastructure_failure
+  hyperparameter_fishing_as_rerun_reason: forbidden
+  threshold_change_after_results: forbidden
+
+one_seed_diagnostics_after_primary:
+  ordering: cannot_start_if_any_primary_seed_missing
+  runs:
+    - id: global_joint_selector
+      seed: 2027
+      comparison: ptc50
+      primary_method_status: diagnostic_only
+    - id: retention_025_075_100
+      seed: 2027
+    - id: forward_vs_reverse_kl
+      seed: 2027
+    - id: temperature_sensitivity
+      seed: 2027
+      tau_values: [0.5, 2.0]
+    - id: shuffled_prior_ptc50
+      seed: 2027
+      permutation_seed: 6701
+      selector: same_as_ptc50
+      interpretation: prior_specificity_control_not_a_tuned_method
+
+artifact_contract:
+  run_id_format: "{phase}.{model}.{method}.seed-{seed}.{YYYYMMDDTHHMMSSZ}"
+  root: "${PTC_RUN_ROOT}/${run_id}"
+  required_paths:
+    - run_manifest.json
+    - status.json
+    - logs/attempt-0000.json
+    - logs/metrics.attempt-0000.jsonl
+    - checkpoints/step-00000/checkpoint.pt
+    - checkpoints/step-00000/SHA256.json
+    - SEALED.json
+    - DONE.json
+  resume_checkpoint_rule: latest_complete_committed_step_in_same_run
+  checkpoint_root_unexpected_or_partial_member: fail_closed
+  attempt_logs:
+    metadata_name: "logs/attempt-{index:04d}.json"
+    metrics_name: "logs/metrics.attempt-{index:04d}.jsonl"
+    indices_contiguous_from_zero: true
+    prior_attempt_files_reopened_or_overwritten: false
+    one_new_pair_per_launch: true
+    optimizer_step_strictly_increasing_within_each_metrics_file: true
+    cross_attempt_overlap_from_uncommitted_failed_tail_allowed: true
+    canonical_curve_rule: trim_each_nonfinal_attempt_at_next_start_optimizer_step
+  done_written_last: true
+  absence_of_done_means_unsealed: true
+  sole_success_commit: DONE.json
+  failed_record_may_be_superseded_only_by_done: true
+  status_json_is_immutable_start_record: true
+  run_manifest_required_fields:
+    - config_and_sha256
+    - student_and_teacher_checkpoint_sha256
+    - teacher_and_student_initial_state_sha256
+    - codebook_prior_sha256_when_used
+    - patched_audiocraft_lm_sha256
+    - patched_audiocraft_source_identity
+    - physical_hostname
+    - python_torch_cuda_gpu_and_compute_capability
+    - launcher_and_world_size
+    - train_manifest_sha256
+    - exact_launch_command
+    - resolved_method
+    - effective_and_physical_batch
+    - optimizer_schedule
+    - prompt_and_rollout_token_budgets
+  attempt_metadata_required_fields:
+    - schema_version
+    - attempt_index
+    - attempt_kind
+    - created_unix_seconds
+    - hostname
+    - config_sha256
+    - start_optimizer_step
+    - start_global_microstep
+    - start_checkpoint
+    - metrics_path
+  attempt_start_checkpoint_required_fields:
+    - directory
+    - checkpoint_sha256
+    - sidecar_sha256
+  metrics_attempt_jsonl_required_fields:
+    identity:
+      - schema_version
+      - event
+      - mode
+    progress:
+      - optimizer_step
+      - global_microstep
+      - learning_rate
+      - loss
+      - gradient_norm
+    selection_and_normalization:
+      - global_denominators
+      - denominator_window_constant
+      - selected_cells_rank0
+      - valid_cells_rank0
+    timing_and_memory:
+      - step_seconds
+      - cuda_max_memory_allocated
+      - cuda_max_memory_reserved
+  sealed_attempt_summary_required_fields:
+    - attempt_index
+    - attempt_kind
+    - config_sha256
+    - metadata_path
+    - metadata_sha256
+    - metrics_path
+    - metrics_sha256
+    - start_optimizer_step
+    - start_global_microstep
+    - start_checkpoint_directory
+    - record_count
+    - first_optimizer_step
+    - last_optimizer_step
+  full_rollout_logits_persisted: false
+  evaluation:
+    stable_id_join_required: true
+    count_generation_failures: true
+    best_of_n_replacement: forbidden
+    audio_sha256_required: true
+
+stage1_complete_when:
+  - correctness_gate_all_green
+  - phenomenon_tables_bootstraps_and_decisions_sealed
+  - small_pilot_decision_sealed
+  - medium_scale_gate_decision_sealed
+  - all_15_primary_jobs_sealed_or_method_formally_falsified
+  - every_compared_job_proves_same_train_manifest_sha256
+  - every_training_job_proves_single_machine_world_size_8

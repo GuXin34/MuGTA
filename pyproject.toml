@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ptc-opd"
+version = "0.2.0"
+description = "Perceptual trajectory- and codebook-aware on-policy distillation"
+requires-python = ">=3.9,<3.12"
+dependencies = ["torch==2.1.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4,<9"]
+calibration = ["numpy>=1.23.5,<2", "soundfile>=0.12,<0.14"]
+cfg-gate = ["numpy>=1.23.5,<2", "soundfile>=0.12,<0.14"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

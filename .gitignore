@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Experimental products (host externally)
+runs/
+artifacts/
+manifests/
+console_logs/
+generated_audio/
+metrics/
+checkpoints/
+vendor/
+third_party/audiocraft/
+
+# HuggingFace cache
+.cache/
+hf_cache/
+transformers_cache/
+
+# Logs
+*.log
+*.log.*

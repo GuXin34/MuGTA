@@ -1,0 +1,217 @@
+{
+  "schema_version": "ptc-opd-stage1-autonomy-contract-v1",
+  "primary_pilot_methods": [
+    "uniform100",
+    "codebook100",
+    "random50",
+    "disagreement50",
+    "ptc50"
+  ],
+  "small_only_temporal_diagnostics": {
+    "prefix50": {
+      "implementation_status": "implemented",
+      "included_in_primary_pilot_decision": false,
+      "may_replace_primary_method": false,
+      "required_files": [
+        "src/ptc_opd/train_utils.py",
+        "src/ptc_opd/losses.py",
+        "scripts/train_stage1.py"
+      ],
+      "scope": "small_only_temporal_diagnostic"
+    }
+  },
+  "pilot_eval_manifest": {
+    "count": 128,
+    "source_count": 300,
+    "selection_seed": 2701,
+    "selection_namespace": "ptc-opd-small-pilot-eval-v1",
+    "source_basename": "dev.full.jsonl"
+  },
+  "learning_rate": {
+    "candidates": [1e-06, 3e-06, 1e-05],
+    "clap_guardrail_base_sd_gte": -0.1,
+    "decision_checkpoint": 500,
+    "method": "uniform100",
+    "model": "facebook/musicgen-small",
+    "optimizer_steps": 500,
+    "q_dev_weights": {
+      "audiobox_ce": 0.25,
+      "audiobox_pq": 0.25,
+      "muq_mi": 0.5
+    },
+    "selection": "highest_eligible_q_dev",
+    "tie_break": "lower_learning_rate_only_on_exact_numeric_q_dev_equality",
+    "train_seed": 2027
+  },
+  "ptc500_stability": {
+    "checkpoint_steps": [0, 250, 500],
+    "learning_rate_source": "sealed_lr_decision",
+    "log_every": 1,
+    "memory_margin_min": 0.05,
+    "method": "ptc50",
+    "optimizer_steps": 500,
+    "save_every": 250,
+    "train_seed": 2027,
+    "world_size": 8
+  },
+  "small_pilot": {
+    "methods": [
+      "uniform100",
+      "codebook100",
+      "random50",
+      "prefix50",
+      "disagreement50",
+      "ptc50"
+    ],
+    "primary_methods": [
+      "uniform100",
+      "codebook100",
+      "random50",
+      "disagreement50",
+      "ptc50"
+    ],
+    "diagnostic_method": "prefix50",
+    "optimizer_steps": 500,
+    "decision_checkpoint": 500,
+    "gates": {
+      "uniform_q_dev_gt": 0.0,
+      "ptc_retention_vs_uniform_gte": 0.8,
+      "ptc_minus_random_q_dev_gte": -0.1,
+      "ptc_mert_diversity_gt_uniform": true,
+      "disagreement_q_dev_gt_prefix": true,
+      "ptc_finite_metrics": true,
+      "ptc_stable_optimization": true,
+      "fad_pipeline_check_all_six_methods": true
+    }
+  },
+    "capabilities": {
+        "base_teacher_generation": {
+            "implementation_status": "implemented",
+            "required_files": [
+                "scripts/generate_stage1_audio.py",
+                "scripts/verify_stage1_generation.py",
+                "src/ptc_opd/stage1_generation.py",
+                "tests/test_stage1_generation_contract.py"
+            ]
+        },
+        "b1_prestability": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/run_b1_single_gpu_audit.py",
+        "scripts/run_b1_distributed_audit.py",
+        "scripts/finalize_b1_prestability.py",
+                "scripts/verify_b1_prestability.py"
+            ]
+        },
+        "b1_full_closure": {
+            "implementation_status": "implemented",
+            "required_files": [
+                "scripts/finalize_b1_full_closure.py",
+                "src/ptc_opd/stage1_control.py"
+            ]
+        },
+    "clap_evaluator": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/eval_stage1_clap.py",
+        "src/ptc_opd/stage1_metrics.py"
+      ]
+    },
+    "fad_evaluator": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/build_stage1_eval_model_pins.py",
+        "scripts/build_stage1_fad_reference.py",
+        "scripts/eval_stage1_diversity_fad.py",
+        "scripts/verify_stage1_diversity_fad.py",
+        "src/ptc_opd/stage1_diversity_fad.py",
+        "docs/STAGE1_DIVERSITY_FAD_RUNBOOK.md",
+        "tests/test_stage1_diversity_fad.py"
+      ]
+    },
+    "lr_decision": {
+      "implementation_status": "implemented",
+      "required_files": ["scripts/decide_stage1_lr.py"]
+    },
+    "lr_evaluation_summary": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/build_stage1_lr_summary.py",
+        "src/ptc_opd/stage1_control.py",
+        "src/ptc_opd/stage1_generation.py",
+        "src/ptc_opd/stage1_metrics.py"
+      ]
+    },
+    "mert_evaluator": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/build_stage1_eval_model_pins.py",
+        "scripts/build_stage1_fad_reference.py",
+        "scripts/eval_stage1_diversity_fad.py",
+        "scripts/verify_stage1_diversity_fad.py",
+        "src/ptc_opd/stage1_diversity_fad.py",
+        "docs/STAGE1_DIVERSITY_FAD_RUNBOOK.md",
+        "tests/test_stage1_diversity_fad.py"
+      ]
+    },
+    "performance_benchmark": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/perf_benchmark_common.py",
+        "scripts/benchmark_stage1_perf.py",
+        "scripts/run_perf_node.py",
+        "scripts/aggregate_perf_benchmark.py",
+        "scripts/verify_perf_benchmark.py",
+        "docs/PERF_BENCHMARK_RUNBOOK.md",
+        "tests/test_perf_benchmark.py"
+      ]
+    },
+    "pilot_eval_manifest": {
+      "implementation_status": "implemented",
+      "required_files": ["scripts/build_pilot_eval_manifest.py"]
+    },
+    "ptc500_stability": {
+      "implementation_status": "implemented",
+      "required_files": ["scripts/decide_ptc500_stability.py"]
+    },
+    "quality_evaluator": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/eval_stage1_quality.py",
+        "src/ptc_opd/stage1_metrics.py"
+      ]
+    },
+    "small_pilot_decision": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/decide_stage1_pilot.py",
+        "src/ptc_opd/stage1_control.py"
+      ]
+    },
+    "small_pilot_summary": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/build_stage1_pilot_summary.py",
+        "src/ptc_opd/stage1_control.py",
+        "src/ptc_opd/stage1_metrics.py",
+        "src/ptc_opd/stage1_diversity_fad.py"
+      ]
+    },
+    "trained_checkpoint_generation": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/generate_stage1_audio.py",
+        "scripts/verify_stage1_generation.py",
+        "src/ptc_opd/stage1_generation.py",
+        "tests/test_stage1_generation_contract.py"
+      ]
+    },
+    "training_runner": {
+      "implementation_status": "implemented",
+      "required_files": [
+        "scripts/train_stage1.py",
+        "scripts/verify_stage1_run.py"
+      ]
+    }
+  }
+}

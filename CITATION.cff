@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: "MuGTA: Perceptual-Trajectory and Codebook-aware On-Policy Distillation for Music LMs"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: "Xin"
+    family-names: "Gu"
+    affiliation: "<Institution>"
+version: 0.2.0
+date-released: "2026-09-14"
+license: Apache-2.0
+repository-code: "https://github.com/GuXin34/MuGTA"
+preferred-citation:
+  type: conference-paper
+  title: "PTC-OPD: Perceptual-Trajectory and Codebook-aware On-Policy Distillation for Music Language Models with Classifier-Free-Guidance Teachers"
+  authors:
+    - given-names: "Xin"
+      family-names: "Gu"
+  conference:
+    name: "IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)"
+  year: 2027

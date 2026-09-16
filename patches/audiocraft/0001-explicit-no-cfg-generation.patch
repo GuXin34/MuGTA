@@ -1,0 +1,380 @@
+diff --git a/audiocraft/models/lm.py b/audiocraft/models/lm.py
+index 39b544b..f79f3de 100644
+--- a/audiocraft/models/lm.py
++++ b/audiocraft/models/lm.py
+@@ -330,7 +330,8 @@ class LMModel(StreamingModule):
+                            top_p: float = 0.0,
+                            cfg_coef: tp.Optional[float] = None,
+                            cfg_coef_beta: tp.Optional[float] = None,
+-                           two_step_cfg: tp.Optional[bool] = None) -> torch.Tensor:
++                           two_step_cfg: tp.Optional[bool] = None,
++                           use_cfg: bool = True) -> torch.Tensor:
+         """Sample next token from the model given a sequence and a set of conditions. The model supports
+         multiple sampling strategies (greedy sampling, softmax, top-k, top-p...).
+ 
+@@ -351,6 +352,8 @@ class LMModel(StreamingModule):
+                 push the text condition more than the style condition in the case where both text and style
+                 conditions are being used.
+             two_step_cfg (bool): Whether to run classifier free-guidance with 2 distinct steps.
++            use_cfg (bool): Whether to use classifier-free guidance. If false,
++                run only the conditional branch.
+ 
+         Returns:
+             next_token (torch.Tensor): Next token tensor of shape [B, K, 1].
+@@ -359,7 +362,12 @@ class LMModel(StreamingModule):
+         cfg_coef = self.cfg_coef if cfg_coef is None else cfg_coef
+         model = self if self._fsdp is None else self._fsdp
+         two_step_cfg = self.two_step_cfg if two_step_cfg is None else two_step_cfg
+-        if cfg_coef_beta is not None:
++        if not use_cfg:
++            assert isinstance(cfg_conditions, dict), type(cfg_conditions)
++            logits = model(
++                sequence,
++                conditions=[], condition_tensors=cfg_conditions)
++        elif cfg_coef_beta is not None:
+             assert isinstance(cfg_conditions, dict)
+             condition_tensors = cfg_conditions
+             if condition_tensors:
+@@ -433,6 +441,8 @@ class LMModel(StreamingModule):
+                  remove_prompts: bool = False,
+                  check: bool = False,
+                  callback: tp.Optional[tp.Callable[[int, int], None]] = None,
++                 use_cfg: bool = True,
++                 condition_tensors: tp.Optional[ConditionTensors] = None,
+                  ) -> torch.Tensor:
+         """Generate tokens sampling from the model given a prompt or unconditionally. Generation can
+         be performed in a greedy fashion or using sampling with top K and top P strategies.
+@@ -456,14 +466,43 @@ class LMModel(StreamingModule):
+             remove_prompts (bool): Whether to remove prompts from generation or not.
+             check (bool): Whether to apply further checks on generated sequence.
+             callback (Callback, optional): Callback function to report generation progress.
++            use_cfg (bool): Whether to use classifier-free guidance. If false,
++                run only the conditional branch.
++            condition_tensors (dict[str, ConditionType], optional): Precomputed
++                condition tensors, mutually exclusive with ``conditions``. For
++                one-pass CFG these contain conditional then null examples (2B).
+         Returns:
+             torch.Tensor: Generated tokens.
+         """
+         assert not self.training, "generation shouldn't be used in training mode."
++        if condition_tensors is not None and conditions:
++            raise ValueError("condition_tensors and conditions are mutually exclusive")
+         first_param = next(iter(self.parameters()))
+         device = first_param.device
+ 
+         # Checking all input shapes are consistent.
++        condition_batch_size = None
++        if condition_tensors:
++            condition_batch_sizes = {
++                value[0].shape[0] for value in condition_tensors.values()
++            }
++            if len(condition_batch_sizes) != 1:
++                raise ValueError("condition_tensors must have one consistent batch size")
++            condition_batch_size = condition_batch_sizes.pop()
++            if use_cfg:
++                if condition_batch_size % 2:
++                    raise ValueError(
++                        "CFG condition_tensors batch must be even (conditional+null)"
++                    )
++                condition_batch_size //= 2
++            if num_samples is not None and num_samples != condition_batch_size:
++                raise ValueError(
++                    "num_samples and condition_tensors have inconsistent batch sizes"
++                )
++            if prompt is not None and prompt.shape[0] != condition_batch_size:
++                raise ValueError(
++                    "prompt and condition_tensors have inconsistent batch sizes"
++                )
+         possible_num_samples = []
+         if num_samples is not None:
+             possible_num_samples.append(num_samples)
+@@ -471,6 +510,8 @@ class LMModel(StreamingModule):
+             possible_num_samples.append(prompt.shape[0])
+         elif conditions:
+             possible_num_samples.append(len(conditions))
++        elif condition_batch_size is not None:
++            possible_num_samples.append(condition_batch_size)
+         else:
+             possible_num_samples.append(1)
+         assert [x == possible_num_samples[0] for x in possible_num_samples], "Inconsistent inputs shapes"
+@@ -487,7 +528,15 @@ class LMModel(StreamingModule):
+         # With a batch size of 1, this can be slower though.
+         cfg_conditions: CFGConditions
+         cfg_conditions = {}
+-        if cfg_coef_beta is not None:
++        if not use_cfg:
++            if condition_tensors is not None:
++                cfg_conditions = condition_tensors
++            elif conditions:
++                tokenized = self.condition_provider.tokenize(conditions)
++                cfg_conditions = self.condition_provider(tokenized)
++        elif condition_tensors is not None:
++            cfg_conditions = condition_tensors
++        elif cfg_coef_beta is not None:
+             if conditions:
+                 wav_conditions = _drop_description_condition(conditions)
+                 null_conditions = ClassifierFreeGuidanceDropout(p=1.0)(conditions)
+@@ -549,7 +598,8 @@ class LMModel(StreamingModule):
+                 # sample next token from the model, next token shape is [B, K, 1]
+                 next_token = self._sample_next_token(
+                     curr_sequence, cfg_conditions, unconditional_state, use_sampling, temp, top_k, top_p,
+-                    cfg_coef=cfg_coef, cfg_coef_beta=cfg_coef_beta, two_step_cfg=two_step_cfg)
++                    cfg_coef=cfg_coef, cfg_coef_beta=cfg_coef_beta, two_step_cfg=two_step_cfg,
++                    use_cfg=use_cfg)
+                 # ensure the tokens that should be masked are properly set to special_token_id
+                 # as the model never output special_token_id
+                 valid_mask = mask[..., offset:offset+1].expand(B, -1, -1)
++diff --git a/tests/models/test_lm_no_cfg.py b/tests/models/test_lm_no_cfg.py
+new file mode 100644
+index 0000000..8659ab9
+--- /dev/null
++++ b/tests/models/test_lm_no_cfg.py
+@@ -0,0 +1,248 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++# All rights reserved.
++#
++# This source code is licensed under the license found in the
++# LICENSE file in the root directory of this source tree.
++
++import typing as tp
++
++import pytest
++import torch
++
++from audiocraft.models.builders import get_debug_lm_model
++from audiocraft.models.lm import CFGConditions, LMModel
++from audiocraft.modules.conditioners import (
++    ClassifierFreeGuidanceDropout,
++    ConditioningAttributes,
++)
++
++
++def _conditions() -> tp.List[ConditioningAttributes]:
++    return [
++        ConditioningAttributes(text={"description": "bright piano"}),
++        ConditioningAttributes(text={"description": "slow distorted guitar and drums"}),
++    ]
++
++
++def _condition_tensors(
++    model: LMModel,
++    conditions: tp.List[ConditioningAttributes],
++    *,
++    include_null: bool,
++) -> CFGConditions:
++    if include_null:
++        null_conditions = ClassifierFreeGuidanceDropout(p=1.0)(conditions)
++        conditions = conditions + null_conditions
++    tokenized = model.condition_provider.tokenize(conditions)
++    return model.condition_provider(tokenized)
++
++
++def _sample_and_capture_forward_logits(
++    model: LMModel,
++    sequence: torch.Tensor,
++    condition_tensors: CFGConditions,
++    *,
++    use_cfg: bool,
++) -> tp.Tuple[torch.Tensor, torch.Tensor]:
++    forwards = []
++
++    def _capture(
++        module: torch.nn.Module,
++        inputs: tp.Tuple[torch.Tensor, ...],
++        output: torch.Tensor,
++    ) -> None:
++        forwards.append(output.detach().clone())
++
++    handle = model.register_forward_hook(_capture)
++    try:
++        with model.streaming():
++            next_token = model._sample_next_token(
++                sequence,
++                condition_tensors,
++                model.get_streaming_state(),
++                use_sampling=False,
++                cfg_coef=1.0,
++                use_cfg=use_cfg,
++            )
++    finally:
++        handle.remove()
++
++    assert len(forwards) == 1
++    return forwards[0], next_token
++
++
++def test_no_cfg_logits_and_greedy_tokens_match_cfg_coef_one() -> None:
++    """Conditional-only decoding is the cfg_coef=1 mathematical endpoint."""
++    torch.manual_seed(0)
++    model = get_debug_lm_model(device="cpu").float().eval()
++    conditions = _conditions()
++    batch_size = len(conditions)
++    sequence = torch.randint(
++        low=0,
++        high=model.card,
++        size=(batch_size, model.num_codebooks, 3),
++        dtype=torch.long,
++    )
++
++    conditional = _condition_tensors(model, conditions, include_null=False)
++    cfg_batched = _condition_tensors(model, conditions, include_null=True)
++
++    no_cfg_logits, no_cfg_token = _sample_and_capture_forward_logits(
++        model, sequence, conditional, use_cfg=False
++    )
++    cfg_logits, cfg_token = _sample_and_capture_forward_logits(
++        model, sequence, cfg_batched, use_cfg=True
++    )
++
++    # No-CFG performs one B-sized conditional forward. Standard one-pass CFG
++    # performs one 2B-sized conditional+unconditional forward.
++    assert no_cfg_logits.shape[0] == batch_size
++    assert cfg_logits.shape[0] == 2 * batch_size
++    cond_logits, uncond_logits = cfg_logits.split(batch_size, dim=0)
++    cfg_coef_one_logits = uncond_logits + (cond_logits - uncond_logits)
++
++    torch.testing.assert_close(
++        no_cfg_logits.float(), cfg_coef_one_logits.float(), rtol=1e-5, atol=1e-5
++    )
++    torch.testing.assert_close(no_cfg_token, cfg_token, rtol=0, atol=0)
++
++
++def test_no_cfg_generation_preserves_pattern_shape_and_mask_checks() -> None:
++    torch.manual_seed(1)
++    model = get_debug_lm_model(device="cpu").float().eval()
++    conditions = _conditions()
++    prompt = torch.randint(
++        low=0,
++        high=model.card,
++        size=(len(conditions), model.num_codebooks, 2),
++        dtype=torch.long,
++    )
++
++    generated = model.generate(
++        prompt=prompt,
++        conditions=conditions,
++        max_gen_len=6,
++        use_sampling=False,
++        use_cfg=False,
++        # These settings must not construct tuple/triple CFG conditions when
++        # explicit no-CFG mode is selected.
++        cfg_coef=7.0,
++        cfg_coef_beta=0.5,
++        two_step_cfg=True,
++        remove_prompts=True,
++        check=True,
++    )
++
++    assert generated.shape == (len(conditions), model.num_codebooks, 4)
++    assert generated.dtype == torch.long
++    assert (generated >= 0).all()
++    assert (generated <= model.card).all()
++
++
++def test_use_cfg_default_matches_explicit_true() -> None:
++    """The new flag must leave every legacy call on the old CFG path."""
++    torch.manual_seed(2)
++    model = get_debug_lm_model(device="cpu").float().eval()
++    conditions = _conditions()
++    kwargs = dict(
++        conditions=conditions,
++        max_gen_len=5,
++        use_sampling=False,
++        cfg_coef=2.5,
++        check=True,
++    )
++
++    legacy = model.generate(**kwargs)
++    explicit = model.generate(**kwargs, use_cfg=True)
++
++    torch.testing.assert_close(legacy, explicit, rtol=0, atol=0)
++
++
++def test_no_cfg_reuses_precomputed_condition_tensors(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    torch.manual_seed(3)
++    model = get_debug_lm_model(device="cpu").float().eval()
++    conditions = _conditions()
++    conditional = _condition_tensors(model, conditions, include_null=False)
++    kwargs = dict(max_gen_len=5, use_sampling=False, use_cfg=False, check=True)
++
++    recomputed = model.generate(conditions=conditions, **kwargs)
++
++    def _unexpected_tokenize(*args: tp.Any, **kwargs: tp.Any) -> tp.NoReturn:
++        raise AssertionError("precomputed condition tensors must bypass tokenization")
++
++    monkeypatch.setattr(model.condition_provider, "tokenize", _unexpected_tokenize)
++    reused = model.generate(condition_tensors=conditional, **kwargs)
++
++    torch.testing.assert_close(recomputed, reused, rtol=0, atol=0)
++
++
++def test_precomputed_cfg_tensors_match_recomputed_and_validate_batches(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    torch.manual_seed(4)
++    model = get_debug_lm_model(device="cpu").float().eval()
++    conditions = _conditions()
++    cfg_batched = _condition_tensors(model, conditions, include_null=True)
++    kwargs = dict(
++        max_gen_len=5,
++        use_sampling=False,
++        use_cfg=True,
++        cfg_coef=2.5,
++        check=True,
++    )
++
++    recomputed = model.generate(conditions=conditions, **kwargs)
++
++    def _unexpected_tokenize(*args: tp.Any, **kwargs: tp.Any) -> tp.NoReturn:
++        raise AssertionError("precomputed CFG tensors must bypass tokenization")
++
++    monkeypatch.setattr(model.condition_provider, "tokenize", _unexpected_tokenize)
++    reused = model.generate(condition_tensors=cfg_batched, **kwargs)
++
++    torch.testing.assert_close(recomputed, reused, rtol=0, atol=0)
++
++    odd_batched = {
++        name: (embedding[:-1], mask[:-1])
++        for name, (embedding, mask) in cfg_batched.items()
++    }
++    with pytest.raises(ValueError, match="batch must be even"):
++        model.generate(
++            condition_tensors=odd_batched,
++            use_cfg=True,
++            max_gen_len=2,
++        )
++
++    with pytest.raises(ValueError, match="mutually exclusive"):
++        model.generate(
++            conditions=conditions,
++            condition_tensors=cfg_batched,
++            use_cfg=True,
++            max_gen_len=2,
++        )
++    with pytest.raises(ValueError, match="inconsistent batch sizes"):
++        model.generate(
++            num_samples=1,
++            condition_tensors=cfg_batched,
++            use_cfg=True,
++            max_gen_len=2,
++        )
++
++
++def test_no_cfg_rejects_two_step_condition_tuple() -> None:
++    model = get_debug_lm_model(device="cpu").float().eval()
++    conditions = _conditions()
++    conditional = _condition_tensors(model, conditions, include_null=False)
++    sequence = torch.zeros(
++        (len(conditions), model.num_codebooks, 1), dtype=torch.long
++    )
++
++    with pytest.raises(AssertionError):
++        model._sample_next_token(
++            sequence,
++            (conditional, conditional),
++            {},
++            use_sampling=False,
++            use_cfg=False,
++        )
