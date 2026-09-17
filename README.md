@@ -22,7 +22,10 @@
 8. [Known Limitations](#known-limitations)
 9. [Citation](#citation)
 10. [License](#license)
+<<<<<<< HEAD
+=======
 11. [Acknowledgements](#acknowledgements)
+>>>>>>> c36b321 (docs(README): add Acknowledgements section for upstream projects)
 
 ---
 
@@ -216,76 +219,19 @@ The AudioCraft overlay patch in `patches/audiocraft/` is derivative of Meta's Au
 
 ## Acknowledgements
 
-MuGTA stands on the shoulders of the following open-source projects, model
-releases, datasets and evaluation toolkits. Without their generous release
-under permissive or research-friendly licenses this work would not have
-been possible.
+We thank the maintainers of the following open-source projects.
 
-### Backbone model & generation stack
-- **MusicGen** (Copet *et al.*, 2023) — the text-to-music decoder-only
-  language model that we distill in this paper. We use the pre-trained
-  `facebook/musicgen-small` and `facebook/musicgen-medium` checkpoints as
-  our frozen teacher and student initialization.
-  <https://github.com/facebookresearch/audiocraft>
-- **AudioCraft** — Meta's audio-generation toolbox that hosts MusicGen,
-  MusicGen sampling, and the delayed-pattern codebook logic. Our
-  `patches/audiocraft/0001-explicit-no-cfg-generation.patch` is a small
-  overlay against AudioCraft `1.4.0a2` (commit
-  `896ec7c47f5e5d1e5aa1e4b260c4405328bf009d`) that adds an explicit
-  `use_cfg=False` shortcut while preserving byte-identical behaviour to
-  upstream in the CFG-on path.
-  Licensed under MIT © Meta Platforms.
-- **EnCodec** (Défossez *et al.*, 2022) — the residual-vector-quantised
-  neural audio codec used as MusicGen's tokenizer and decoder. Our A1-R2
-  codebook prior `a_q` is derived directly from EnCodec's frozen codebook
-  activations.
-  <https://github.com/facebookresearch/encodec>
-- **T5** (Raffel *et al.*, 2020) — the frozen `t5-base` text encoder used
-  by MusicGen for conditioning; we do not modify it.
+**Backbone & generation:**
+- [MusicGen / AudioCraft](https://github.com/facebookresearch/audiocraft)
+- [EnCodec](https://github.com/facebookresearch/encodec)
+- [T5](https://huggingface.co/t5-base)
 
-### Perceptual and semantic evaluators
-- **MuQ** (Tencent AI Lab) — self-supervised music representation model
-  used as the primary paired-comparison quality evaluator.
-  <https://github.com/tencent-ailab/MuQ>
-- **MERT** (Li *et al.*, 2023) — music-understanding foundation model
-  used for representation-space diversity metrics.
-  <https://huggingface.co/m-a-p/MERT-v1-95M>
-- **CLAP / LAION-CLAP** (Wu *et al.*, 2023) — contrastive
-  language–audio pretrained model used both as a semantic-alignment
-  evaluator and as a Fréchet-distance embedding backbone.
-  <https://github.com/LAION-AI/CLAP>
-- **AudioBox Aesthetics** (Meta AI) — the perceptual aesthetics
-  evaluator supplying the CE (Content-Enjoyment) and PQ (Perceptual
-  Quality) subscales used in our composite `Q_dev` score.
-  <https://ai.meta.com/research/publications/audiobox-aesthetics/>
+**Evaluators:**
+- [MuQ](https://github.com/tencent-ailab/MuQ)
+- [MERT](https://huggingface.co/m-a-p/MERT-v1-95M)
+- [LAION-CLAP](https://github.com/LAION-AI/CLAP)
+- [AudioBox Aesthetics](https://ai.meta.com/research/publications/audiobox-aesthetics/)
 
-### Fréchet Audio Distance (FAD)
-- **Fréchet Audio Distance** (Kilgour *et al.*, 2019) — the original
-  reference FAD protocol using VGGish embeddings.
-- **`frechet_audio_distance`** (Microsoft / community fork) — the
-  Python package that provides multi-backbone FAD (VGGish, PANN, CLAP,
-  MERT) and that we use for diversity/similarity reporting.
-  <https://github.com/microsoft/fadtk>
-- **VGGish** (Hershey *et al.*, 2017) — the audio-event embedding
-  network used as the classical FAD reference space.
-
-### Datasets
-- **MusicCaps** (Agostinelli *et al.*, 2023) — the 5.5 K human-caption
-  music dataset from which our 128-prompt dev-split and 200-prompt
-  test-split are drawn.
-  <https://www.kaggle.com/datasets/googleai/musiccaps>
-- **FMA (Free Music Archive)** (Defferrard *et al.*, 2017) — used for
-  FAD reference statistics under the A1-R2 SHA-pinned protocol.
-  <https://github.com/mdeff/fma>
-
-### Infrastructure
-- **PyTorch** and **`torchaudio`** — the training runtime.
-- **HuggingFace `transformers`, `huggingface_hub`, `datasets`** — for
-  hosting the evaluators and future model-zoo release.
-- **`soundfile`, `librosa`, `resampy`, `scipy`, `numpy`, `pandas`** —
-  audio I/O, resampling, and statistical toolchain.
-
-We are grateful to the maintainers of every project above for keeping
-their code, models and datasets openly available to the research
-community. Any errors in citation, attribution or interpretation are
-solely the responsibility of the MuGTA authors.
+**FAD:**
+- [frechet_audio_distance](https://github.com/microsoft/fadtk)
+- [VGGish](https://github.com/tensorflow/models/tree/master/research/audioset/vggish)
