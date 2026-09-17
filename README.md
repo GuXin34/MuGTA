@@ -4,10 +4,9 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%E2%80%933.11-blue.svg)](https://www.python.org)
 [![PyTorch 2.1](https://img.shields.io/badge/PyTorch-2.1.0-ee4c2c.svg)](https://pytorch.org)
 
-
-> Reference implementation of the paper **"MUGTA: On-Policy Guidance Transfer and Supervision Allocation for Music Generation"**.
+> Reference implementation of the paper **"MuGTA: On-Policy Guidance Transfer and Supervision Allocation for Music Generation"**.
 >
-> The paper studies **on-policy distillation (OPD)** for text-to-music language models. We show that the *frozen-CFG-teacher* baseline already recovers most of the perceptual gain of CFG-guided sampling **while roughly halving decoder latency**, and we investigate two orthogonal supervision-selection schemes — **codebook-aware weighting** (`aq` derived from a codec prior) and **perceptual-trajectory (PTC) top-K JS masking** — under a strict factorial protocol on MusicGen-small and MusicGen-medium.
+> The paper studies **on-policy distillation (OPD)** for text-to-music language models. We show that the *frozen-CFG-teacher* baseline already recovers most of the perceptual gain of CFG-guided sampling **while roughly halving decoder latency**, and we investigate two orthogonal supervision-selection schemes — **codebook-aware weighting** (`a_q` derived from a codec prior) and **perceptual-trajectory (PTC) top-K JS masking** — under a strict factorial protocol on MusicGen-small and MusicGen-medium.
 
 ---
 
@@ -22,10 +21,7 @@
 8. [Known Limitations](#known-limitations)
 9. [Citation](#citation)
 10. [License](#license)
-<<<<<<< HEAD
-=======
 11. [Acknowledgements](#acknowledgements)
->>>>>>> c36b321 (docs(README): add Acknowledgements section for upstream projects)
 
 ---
 
@@ -201,14 +197,13 @@ If you use MuGTA in your research, please cite:
 
 ```bibtex
 @inproceedings{mugta2027,
-  title     = {MUGTA: On-Policy Guidance Transfer and Supervision Allocation for Music Generation},
+  title     = {MuGTA: On-Policy Guidance Transfer and Supervision Allocation for Music Generation},
   author    = {Anonymous},
   booktitle = {ICASSP},
   year      = {2027},
   note      = {Under review}
 }
 ```
-
 Machine-readable metadata is also available in [`CITATION.cff`](CITATION.cff).
 
 ## License
